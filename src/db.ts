@@ -22,6 +22,8 @@ interface Script {
   slug: string;
   created_at: string;
   executions?: number;
+  target_game?: string;
+  requires_key?: number; // 0 or 1
 }
 
 interface Challenge {
@@ -32,17 +34,48 @@ interface Challenge {
   used: number; // 0 or 1
 }
 
+interface Setting {
+  keySystemEnabled: boolean;
+  adLinkUrl: string;
+  keyExpiryHours: number;
+}
+
+interface KeyVal {
+  key: string;
+  ip: string;
+  slug: string;
+  created_at: string;
+  expires_at: string;
+}
+
+interface Ban {
+  ip: string;
+  expires_at: string;
+}
+
 interface Schema {
   admins: Admin[];
   scripts: Script[];
   challenges: Challenge[];
+  settings?: Setting;
+  keys?: KeyVal[];
+  bans?: Ban[];
+  premiumKeys?: string[];
 }
 
 // Initial state
 let dataStore: Schema = {
   admins: [],
   scripts: [],
-  challenges: []
+  challenges: [],
+  settings: {
+    keySystemEnabled: false,
+    adLinkUrl: "",
+    keyExpiryHours: 24
+  },
+  keys: [],
+  bans: [],
+  premiumKeys: []
 };
 
 // Ensure directory exists & read file
@@ -58,6 +91,16 @@ function loadDatabaseSync() {
       if (!dataStore.admins) dataStore.admins = [];
       if (!dataStore.scripts) dataStore.scripts = [];
       if (!dataStore.challenges) dataStore.challenges = [];
+      if (!dataStore.settings) {
+        dataStore.settings = {
+          keySystemEnabled: false,
+          adLinkUrl: "",
+          keyExpiryHours: 24
+        };
+      }
+      if (!dataStore.keys) dataStore.keys = [];
+      if (!dataStore.bans) dataStore.bans = [];
+      if (!dataStore.premiumKeys) dataStore.premiumKeys = [];
     } else {
       saveDatabaseSync();
     }
@@ -150,7 +193,7 @@ export async function dbRun(sql: string, params: any[] = []): Promise<{ lastID: 
 
   // 4. INSERT INTO scripts
   if (sqlNormalized.startsWith("INSERT INTO scripts")) {
-    const [name, description, content, slug] = params;
+    const [name, description, content, slug, target_game, requires_key] = params;
     const script: Script = {
       id: Date.now() + Math.random(),
       name,
@@ -158,7 +201,9 @@ export async function dbRun(sql: string, params: any[] = []): Promise<{ lastID: 
       content,
       slug,
       created_at: new Date().toISOString(),
-      executions: 0
+      executions: 0,
+      target_game: target_game || "Generic Roblox",
+      requires_key: requires_key !== undefined ? Number(requires_key) : 1
     };
     dataStore.scripts.push(script);
     saveDatabaseSync();
@@ -253,17 +298,32 @@ export async function dbGet<T = any>(sql: string, params: any[] = []): Promise<T
   }
 
   // 2. SELECT id FROM scripts WHERE slug = ?
-  if (sqlNormalized.startsWith("SELECT id FROM scripts WHERE slug = ?")) {
+  if (sqlNormalized.startsWith("SELECT id FROM scripts WHERE slug = ?") || sqlNormalized.startsWith("SELECT id, requires_key FROM scripts WHERE slug = ?")) {
     const [slug] = params;
     const script = dataStore.scripts.find(s => s.slug === slug);
-    return script ? { id: script.id } as T : undefined;
+    return script ? { id: script.id, requires_key: script.requires_key !== undefined ? script.requires_key : 1 } as T : undefined;
+  }
+
+  // 2b. SELECT metadata OR complete scripts fields WHERE slug = ?
+  if (sqlNormalized.startsWith("SELECT name, description") || sqlNormalized.startsWith("SELECT id, name, description") || sqlNormalized.startsWith("SELECT * FROM scripts WHERE slug = ?")) {
+    const [slug] = params;
+    const script = dataStore.scripts.find(s => s.slug === slug);
+    return script ? { 
+      id: script?.id,
+      name: script?.name, 
+      description: script?.description, 
+      content: script?.content,
+      slug: script?.slug,
+      target_game: script?.target_game || "Generic Roblox",
+      requires_key: script?.requires_key !== undefined ? script.requires_key : 1
+    } as T : undefined;
   }
 
   // 3. SELECT content FROM scripts WHERE slug = ?
-  if (sqlNormalized.startsWith("SELECT content FROM scripts WHERE slug = ?")) {
+  if (sqlNormalized.startsWith("SELECT content FROM scripts WHERE slug = ?") || sqlNormalized.startsWith("SELECT content, requires_key FROM scripts WHERE slug = ?")) {
     const [slug] = params;
     const script = dataStore.scripts.find(s => s.slug === slug);
-    return script ? { content: script.content } as T : undefined;
+    return script ? { content: script.content, requires_key: script.requires_key !== undefined ? script.requires_key : 1 } as T : undefined;
   }
 
   // 4. SELECT * FROM challenges
@@ -282,7 +342,7 @@ export async function dbAll<T = any>(sql: string, params: any[] = []): Promise<T
   const sqlNormalized = sql.trim().replace(/\s+/g, " ");
 
   // 1. SELECT all scripts
-  if (sqlNormalized.startsWith("SELECT id, name, description, slug, created_at")) {
+  if (sqlNormalized.startsWith("SELECT id, name, description, slug, created_at") || sqlNormalized.startsWith("SELECT * FROM scripts") || sqlNormalized.startsWith("SELECT id, name, description, slug, created_at, executions")) {
     const list = [...dataStore.scripts]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map(s => ({
@@ -291,13 +351,114 @@ export async function dbAll<T = any>(sql: string, params: any[] = []): Promise<T
         description: s.description,
         slug: s.slug,
         created_at: s.created_at,
-        executions: s.executions || 0
+        executions: s.executions || 0,
+        target_game: s.target_game || "Generic Roblox",
+        requires_key: s.requires_key !== undefined ? s.requires_key : 1
       }));
     return list as T[];
   }
 
   console.warn("Unmatched JSON dbAll SQL query:", sql);
   return [];
+}
+
+export function getSettingsSync() {
+  loadDatabaseSync();
+  return dataStore.settings || { keySystemEnabled: false, adLinkUrl: "", keyExpiryHours: 24 };
+}
+
+export function saveSettingsSync(settings: { keySystemEnabled: boolean; adLinkUrl: string; keyExpiryHours: number }) {
+  loadDatabaseSync();
+  dataStore.settings = settings;
+  saveDatabaseSync();
+}
+
+export function addKeySync(key: string, ip: string, slug: string, durationHours: number) {
+  loadDatabaseSync();
+  const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
+  // Remove existing key for same IP/slug if any exists
+  dataStore.keys = (dataStore.keys || []).filter(k => !(k.ip === ip && k.slug === slug));
+  dataStore.keys.push({
+    key,
+    ip,
+    slug,
+    created_at: new Date().toISOString(),
+    expires_at: expiresAt
+  });
+  saveDatabaseSync();
+}
+
+export function validateKeySync(key: string, ip: string, slug: string): boolean {
+  loadDatabaseSync();
+
+  // If the key is in our premium master keys list, validate instantly!
+  const premKeys = dataStore.premiumKeys || [];
+  if (premKeys.includes(key)) {
+    return true;
+  }
+
+  const keys = dataStore.keys || [];
+  const found = keys.find(k => k.key === key && k.slug === slug && (k.ip === ip || !ip));
+  if (!found) return false;
+  if (new Date(found.expires_at).getTime() < Date.now()) {
+    // expired
+    dataStore.keys = keys.filter(k => k.key !== key);
+    saveDatabaseSync();
+    return false;
+  }
+  return true;
+}
+
+export function checkIpKeySync(ip: string, slug: string): string | null {
+  loadDatabaseSync();
+  const keys = dataStore.keys || [];
+  const found = keys.find(k => k.slug === slug && k.ip === ip);
+  if (!found) return null;
+  if (new Date(found.expires_at).getTime() < Date.now()) {
+    dataStore.keys = keys.filter(k => k !== found);
+    saveDatabaseSync();
+    return null;
+  }
+  return found.key;
+}
+
+export function addBanSync(ip: string, durationMinutes: number) {
+  loadDatabaseSync();
+  const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+  dataStore.bans = (dataStore.bans || []).filter(b => b.ip !== ip);
+  dataStore.bans.push({
+    ip,
+    expires_at: expiresAt
+  });
+  saveDatabaseSync();
+}
+
+export function isBannedSync(ip: string): boolean {
+  loadDatabaseSync();
+  const bans = dataStore.bans || [];
+  const found = bans.find(b => b.ip === ip);
+  if (!found) return false;
+  if (new Date(found.expires_at).getTime() < Date.now()) {
+    // expired
+    dataStore.bans = bans.filter(b => b.ip !== ip);
+    saveDatabaseSync();
+    return false;
+  }
+  return true;
+}
+
+export function getRemainingBanSeconds(ip: string): number {
+  loadDatabaseSync();
+  const bans = dataStore.bans || [];
+  const found = bans.find(b => b.ip === ip);
+  if (!found) return 0;
+  const remainingMs = new Date(found.expires_at).getTime() - Date.now();
+  if (remainingMs <= 0) {
+    dataStore.bans = bans.filter(b => b.ip !== ip);
+    saveDatabaseSync();
+    return 0;
+  }
+  return Math.ceil(remainingMs / 1000);
 }
 
 export function getStats() {
@@ -310,5 +471,34 @@ export function getStats() {
     return (now - createdAtTime) <= 30000;
   }).length;
   const totalExecutions = dataStore.scripts.reduce((acc, s) => acc + (s.executions || 0), 0);
-  return { totalScripts, activeChallenges, totalExecutions };
+  const totalKeys = (dataStore.keys || []).length;
+  const activeBans = (dataStore.bans || []).filter(b => new Date(b.expires_at).getTime() > now).length;
+  const totalPremiumKeys = (dataStore.premiumKeys || []).length;
+  return { totalScripts, activeChallenges, totalExecutions, totalKeys, activeBans, totalPremiumKeys };
+}
+
+export function getPremiumKeysSync(): string[] {
+  loadDatabaseSync();
+  return dataStore.premiumKeys || [];
+}
+
+export function addPremiumKeySync(key: string) {
+  loadDatabaseSync();
+  if (!dataStore.premiumKeys) dataStore.premiumKeys = [];
+  if (!dataStore.premiumKeys.includes(key)) {
+    dataStore.premiumKeys.push(key);
+    saveDatabaseSync();
+  }
+}
+
+export function deletePremiumKeySync(key: string) {
+  loadDatabaseSync();
+  if (!dataStore.premiumKeys) dataStore.premiumKeys = [];
+  dataStore.premiumKeys = dataStore.premiumKeys.filter(k => k !== key);
+  saveDatabaseSync();
+}
+
+export function isPremiumKeySync(key: string): boolean {
+  loadDatabaseSync();
+  return (dataStore.premiumKeys || []).includes(key);
 }

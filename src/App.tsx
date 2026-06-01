@@ -14,7 +14,11 @@ import {
   Code2,
   Calendar,
   AlertTriangle,
-  Play
+  Play,
+  Key,
+  Timer,
+  Globe,
+  Activity
 } from "lucide-react";
 
 // Custom fetch helper to automatically inject the authentication header safely
@@ -123,29 +127,170 @@ export default function App() {
 // 1. LANDING PAGE VIEW (/)
 // ===================================
 function LandingPage({ navigate }: { navigate: (p: string) => void }) {
-  return (
-    <div className="flex-grow flex flex-col items-center justify-center relative px-6 py-12">
-      {/* Large faint glowing pulsing background blob behind text */}
-      <div className="absolute top-1/2 left-1/2 w-80 h-80 rounded-full bg-gradient-to-r from-[#8B00FF] to-[#D000FF] ambient-fade -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0" />
+  const [scripts, setScripts] = useState<ScriptItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
-      {/* Main Container */}
-      <div className="relative text-center select-none z-10 flex flex-col items-center">
-        {/* Glowing Title Grid - Now clickable to navigate to /admin */}
-        <h1 
+  useEffect(() => {
+    fetch("/api/public/scripts")
+      .then((res) => res.json())
+      .then((data) => {
+        setScripts(data || []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Public scripts retrieval failure:", err);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleCopy = (slug: string) => {
+    const baseUrl = window.location.origin;
+    const loadstring = `loadstring(game:HttpGet("${baseUrl}/load/${slug}"))()`;
+    navigator.clipboard.writeText(loadstring);
+    setCopiedStates((prev) => ({ ...prev, [slug]: true }));
+    setTimeout(() => {
+      setCopiedStates((prev) => ({ ...prev, [slug]: false }));
+    }, 2000);
+  };
+
+  const filtered = scripts.filter((s) =>
+    s.name.toLowerCase().includes(search.toLowerCase()) ||
+    ((s as any).target_game || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="flex-grow flex flex-col items-center justify-start relative px-4 py-12 md:py-20">
+      {/* Absolute ambient lights */}
+      <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[350px] h-[350px] rounded-full bg-gradient-to-r from-[#8B00FF]/10 to-[#D000FF]/15 blur-3xl pointer-events-none z-0" />
+
+      {/* Access portal corner hook */}
+      <div className="w-full max-w-5xl flex justify-end mb-8 relative z-10">
+        <button
           onClick={() => navigate("/admin")}
-          className="text-8xl md:text-9xl font-black tracking-tighter bg-gradient-to-r from-[#8B00FF] via-[#af3aff] to-[#D000FF] bg-clip-text text-transparent filter drop-shadow-[0_0_35px_rgba(139,0,255,0.4)] cursor-pointer hover:scale-[1.02] transition-transform duration-300 select-none animate-pulse"
-          title="Click to enter SolarX Admin Portal"
+          className="flex items-center gap-1.5 px-4 py-2 border border-[#8B00FF]/20 bg-[#8B00FF]/5 hover:bg-[#8B00FF]/10 hover:border-[#8B00FF]/40 rounded-lg text-xs font-mono font-medium text-[#c084fc] tracking-wider uppercase transition-all"
         >
-          SolarX
-        </h1>
-        
-        {/* Discrete key/portal entry - slightly visible on hover with a smooth transition */}
-        <button 
-          onClick={() => navigate("/admin")}
-          className="mt-6 px-4 py-1.5 rounded-full border border-white/5 bg-white/[0.02] text-xs font-mono text-white/20 select-none cursor-pointer tracking-widest hover:text-[#a855f7] hover:border-[#8B00FF]/30 hover:bg-[#8B00FF]/5 transition-all duration-300"
-        >
-          ACCESS PORTAL
+          <Lock className="w-3.5 h-3.5" />
+          <span>Operator login</span>
         </button>
+      </div>
+
+      <div className="relative text-center max-w-xl mb-12 z-10">
+        <h1 className="text-6xl md:text-7xl font-black tracking-tighter bg-gradient-to-r from-[#8B00FF] via-[#cf59ff] to-[#D000FF] bg-clip-text text-transparent filter drop-shadow-[0_0_30px_rgba(139,0,255,0.2)]">
+          SolarX Hub
+        </h1>
+        <p className="mt-4 text-[#a1a1aa] text-sm md:text-base font-mono">
+          Public Databank Cache & Secure Loader Gateway
+        </p>
+      </div>
+
+      {/* Interactive catalog layout */}
+      <div className="w-full max-w-5xl relative z-10">
+        {/* Search header bar */}
+        <div className="bg-[#0f0e15]/90 border border-[#211f30] rounded-xl p-4.5 mb-8 flex items-center shadow-lg backdrop-blur-md">
+          <Search className="w-4.5 h-4.5 text-[#8b00ff] shrink-0 mr-3" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search deployed distribution nodes by name or targeted game..."
+            className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-[#f3f4f6] text-xs md:text-sm placeholder-[#52525b]"
+          />
+        </div>
+
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center font-mono text-xs text-[#a855f7] gap-3">
+            <div className="w-6 h-6 border-2 border-t-transparent border-[#8b00ff] rounded-full animate-spin" />
+            <span>Connecting to live databank sockets...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-20 border-2 border-dashed border-[#1f1d2d] rounded-2xl flex flex-col items-center justify-center text-[#52525b] text-sm font-mono text-center p-6 bg-[#0c0b11]/50">
+            <Terminal className="w-10 h-10 text-[#211f32] mb-3" />
+            <span>Zero matching Lua arrays or keyless structures found.</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filtered.map((script) => {
+              const isCopied = copiedStates[script.slug] || false;
+              const targetGameStr = (script as any).target_game || "Generic Roblox";
+              const isKeyless = (script as any).requires_key === 0;
+
+              return (
+                <div
+                  key={script.id}
+                  className="bg-[#0f0e15] border border-[#211f30] hover:border-[#8b00ff]/30 hover:shadow-lg hover:shadow-[#8b00ff]/2 transition-all duration-300 rounded-xl p-5 flex flex-col justify-between relative overflow-hidden group"
+                >
+                  {/* Keyless top bar glow indicator */}
+                  <div
+                    className={`absolute top-0 left-0 right-0 h-[3px] ${
+                      isKeyless
+                        ? "bg-gradient-to-r from-[#10b981] to-[#34d399]"
+                        : "bg-gradient-to-r from-[#8B00FF] to-[#D000FF]"
+                    }`}
+                  />
+
+                  <div>
+                    <div className="flex items-start justify-between mb-3 gap-2">
+                      <h3 className="font-bold text-sm text-white text-left line-clamp-2">
+                        {script.name}
+                      </h3>
+                    </div>
+
+                    <p className="text-xs text-[#8e8e95] text-left line-clamp-3 leading-relaxed mb-4 min-h-[48px]">
+                      {script.description || "No public operational notes registered for this payload."}
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-1.5 mb-5">
+                      <span className="bg-[#171424] text-[#cf9eff] text-[10px] font-mono px-2 py-0.5 rounded border border-[#8b00ff]/10">
+                        {targetGameStr}
+                      </span>
+                      {isKeyless ? (
+                        <span className="bg-emerald-950/20 text-[#34d399] text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/10">
+                          🔓 Keyless
+                        </span>
+                      ) : (
+                        <span className="bg-purple-950/20 text-[#c084fc] text-[10px] font-mono px-2 py-0.5 rounded border border-purple-500/10">
+                          🔑 Key Gateway
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 border-t border-[#211f30] pt-4">
+                    <button
+                      onClick={() => handleCopy(script.slug)}
+                      className="w-full bg-[#1b1929] hover:bg-[#8b00ff] hover:text-white border border-[#2b293e] hover:border-[#8b00ff] text-[#e3e3e3] font-mono font-medium text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      {isCopied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-green-300" />
+                          <span className="text-green-300">Loader Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#cf9eff]" />
+                          <span>Copy Loader snippet</span>
+                        </>
+                      )}
+                    </button>
+
+                    {!isKeyless && (
+                      <a
+                        href={`/getkey/${script.slug}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block w-full text-center text-[10px] font-mono text-[#71717a] hover:text-[#d8b4fe] transition-colors"
+                      >
+                        Acquire Gateway bypass passkey manually →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -308,8 +453,18 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
   const [scriptName, setScriptName] = useState("");
   const [description, setDescription] = useState("");
   const [luaContent, setLuaContent] = useState("");
+  const [targetGame, setTargetGame] = useState("Generic Roblox");
+  const [requiresKey, setRequiresKey] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+
+  // Premium key lists logic state
+  const [premiumKeysList, setPremiumKeysList] = useState<string[]>([]);
+  const [premiumCreateSuccess, setPremiumCreateSuccess] = useState("");
+  const [generatingPremium, setGeneratingPremium] = useState(false);
+
+  // Separate tab layout state: "scripts" or "keysystem"
+  const [adminActiveTab, setAdminActiveTab] = useState<"scripts" | "keysystem">("scripts");
 
   // Last uploaded loadstring output state
   const [generatedLoadstring, setGeneratedLoadstring] = useState("");
@@ -317,6 +472,109 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
 
   // General list copying status map (slug -> boolean)
   const [copyStates, setCopyStates] = useState<Record<string, boolean>>({});
+
+  // Key system controller states
+  const [keySystemEnabled, setKeySystemEnabled] = useState(false);
+  const [adLinkUrl, setAdLinkUrl] = useState("");
+  const [keyExpiryHours, setKeyExpiryHours] = useState(24);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSuccess, setSettingsSuccess] = useState("");
+
+  const loadPremiumKeys = async () => {
+    try {
+      const response = await apiFetch("/api/key-system/premium-keys");
+      if (response.ok) {
+        const data = await response.json();
+        setPremiumKeysList(data || []);
+      }
+    } catch (err) {
+      console.error("Premium keys loading error:", err);
+    }
+  };
+
+  const handleGeneratePremiumKey = async () => {
+    setGeneratingPremium(true);
+    setPremiumCreateSuccess("");
+    try {
+      const response = await apiFetch("/api/key-system/premium-keys", {
+        method: "POST"
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPremiumKeysList(prev => [data.key, ...prev]);
+        setPremiumCreateSuccess(`Successfully engineered direct bypass: ${data.key}`);
+        setTimeout(() => setPremiumCreateSuccess(""), 4000);
+        loadStats();
+      } else {
+        alert("Failed to generate premium license key.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGeneratingPremium(false);
+    }
+  };
+
+  const handleRevokePremiumKey = async (key: string) => {
+    if (!window.confirm(`Revoke this premium gate key? This will immediately lock and sever access for active user lease ${key}.`)) {
+      return;
+    }
+    try {
+      const response = await apiFetch(`/api/key-system/premium-keys/${encodeURIComponent(key)}`, {
+        method: "DELETE"
+      });
+      if (response.ok) {
+        setPremiumKeysList(prev => prev.filter(k => k !== key));
+        loadStats();
+      } else {
+        alert("Failed to revoke premium license key.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const response = await apiFetch("/api/key-system/settings");
+      if (response.ok) {
+        const data = await response.json();
+        setKeySystemEnabled(data.keySystemEnabled);
+        setAdLinkUrl(data.adLinkUrl || "");
+        setKeyExpiryHours(data.keyExpiryHours || 24);
+      }
+    } catch (err) {
+      console.error("Configuration system load error:", err);
+    }
+  };
+
+  const handleSettingsSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    setSettingsSuccess("");
+    try {
+      const response = await apiFetch("/api/key-system/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keySystemEnabled,
+          adLinkUrl,
+          keyExpiryHours: Number(keyExpiryHours)
+        })
+      });
+      if (response.ok) {
+        setSettingsSuccess("Security configurations updated successfully!");
+        setTimeout(() => setSettingsSuccess(""), 3000);
+        loadStats(); // Reload stats as key counts could have changed
+      } else {
+        alert("Action failure from key gateway server.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   // Verify authorization first
   useEffect(() => {
@@ -329,6 +587,8 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
         } else {
           setAuthChecked(true);
           loadScripts();
+          loadSettings();
+          loadPremiumKeys();
         }
       } catch (err) {
         navigate("/admin");
@@ -397,7 +657,9 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
         body: JSON.stringify({
           name: scriptName,
           description: description,
-          content: luaContent
+          content: luaContent,
+          target_game: targetGame,
+          requires_key: requiresKey ? 1 : 0
         }),
       });
 
@@ -415,6 +677,8 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
         setScriptName("");
         setDescription("");
         setLuaContent("");
+        setTargetGame("Generic Roblox");
+        setRequiresKey(true);
         
         // Refresh scripts list and stats
         loadScripts();
@@ -520,68 +784,115 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
       </div>
 
       {/* Statistics Cards Summary Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-        {/* Total Scripts Card */}
-        <div id="stats-total-scripts-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#8B00FF]/50 shadow-md">
-          {/* Accent Line */}
-          <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#8B00FF] to-[#a855f7]" />
-          
-          <div className="space-y-1">
-            <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono block">
-              Total Databank Scripts
-            </span>
-            <span className="text-4xl font-extrabold text-white tracking-tight block">
-              {stats !== null ? stats.totalScripts : "—"}
-            </span>
-          </div>
-          
-          <div className="p-3 bg-[#8B00FF]/10 border border-[#8B00FF]/25 rounded-xl text-[#a855f7]/90 shrink-0">
-            <Terminal className="w-5.5 h-5.5" />
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+         {/* Total Scripts Card */}
+         <div id="stats-total-scripts-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#8B00FF]/50 shadow-md">
+           {/* Accent Line */}
+           <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#8B00FF] to-[#a855f7]" />
+           
+           <div className="space-y-1">
+             <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono block">
+               Total Scripts
+             </span>
+             <span className="text-4xl font-extrabold text-white tracking-tight block">
+               {stats !== null ? stats.totalScripts : "—"}
+             </span>
+           </div>
+           
+           <div className="p-3 bg-[#8B00FF]/10 border border-[#8B00FF]/25 rounded-xl text-[#a855f7]/90 shrink-0">
+             <Terminal className="w-5.5 h-5.5" />
+           </div>
+         </div>
 
-        {/* Total Executions Card */}
-        <div id="stats-total-executions-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#10B981]/50 shadow-md">
-          {/* Accent Line */}
-          <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#10B981] to-[#34D399]" />
-          
-          <div className="space-y-1">
-            <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono block">
-              Total Script Executions
-            </span>
-            <span className="text-4xl font-extrabold text-white tracking-tight block">
-              {stats !== null ? (stats.totalExecutions ?? 0) : "—"}
-            </span>
-          </div>
-          
-          <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/25 rounded-xl text-[#34D399]/90 shrink-0">
-            <Play className="w-5.5 h-5.5" />
-          </div>
-        </div>
+         {/* Total Executions Card */}
+         <div id="stats-total-executions-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#10B981]/50 shadow-md">
+           {/* Accent Line */}
+           <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#10B981] to-[#34D399]" />
+           
+           <div className="space-y-1">
+             <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono block">
+               Total Executions
+             </span>
+             <span className="text-4xl font-extrabold text-white tracking-tight block">
+               {stats !== null ? ((stats as any).totalExecutions ?? 0) : "—"}
+             </span>
+           </div>
+           
+           <div className="p-3 bg-[#10B981]/10 border border-[#10B981]/25 rounded-xl text-[#34D399]/90 shrink-0">
+             <Play className="w-5.5 h-5.5" />
+           </div>
+         </div>
 
-        {/* Active Challenges Pending Card */}
-        <div id="stats-active-challenges-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#D000FF]/50 shadow-md">
-          {/* Accent Line */}
-          <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#D000FF] to-[#e879f9]" />
-          
-          <div className="space-y-1">
-            <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono flex items-center gap-2">
-              <span>Active Pending Challenges</span>
-              <span className="inline-flex w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+         {/* Total Registered Active Keys Card */}
+         <div id="stats-registered-keys-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#3B82F6]/50 shadow-md">
+           {/* Accent Line */}
+           <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#3B82F6] to-[#60A5FA]" />
+           
+           <div className="space-y-1">
+             <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono block">
+               Active Generated Keys
+             </span>
+             <span className="text-4xl font-extrabold text-white tracking-tight block">
+               {stats !== null ? ((stats as any).totalKeys ?? 0) : "—"}
+             </span>
+           </div>
+           
+           <div className="p-3 bg-[#3B82F6]/10 border border-[#3B82F6]/25 rounded-xl text-[#60A5FA]/90 shrink-0">
+             <Key className="w-5.5 h-5.5" />
+           </div>
+         </div>
+
+         {/* Temporary Active Bans Card */}
+         <div id="stats-active-bans-card" className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-5 relative overflow-hidden flex items-center justify-between transition-all hover:border-[#EF4444]/50 shadow-md">
+           {/* Accent Line */}
+           <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-gradient-to-b from-[#EF4444] to-[#F87171]" />
+           
+           <div className="space-y-1">
+             <span className="text-xs uppercase tracking-wider text-[#a1a1aa] font-mono block">
+               Active AdBlock Bans
+             </span>
+             <span className="text-4xl font-extrabold text-white tracking-tight block font-mono text-red-400">
+               {stats !== null ? ((stats as any).activeBans ?? 0) : "—"}
+             </span>
+           </div>
+           
+           <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/25 rounded-xl text-[#F87171]/90 shrink-0">
+             <AlertTriangle className="w-5.5 h-5.5" />
+           </div>
+         </div>
+       </div>
+
+      {/* TABS SELECTION BAR */}
+      <div className="flex border-b border-[#1c1a27] mb-8 gap-2 p-1 bg-[#09080e] rounded-xl max-w-sm">
+        <button
+          onClick={() => setAdminActiveTab("scripts")}
+          className={`flex-1 text-center py-2.5 rounded-lg text-xs font-mono font-bold tracking-wider uppercase transition-all ${
+            adminActiveTab === "scripts"
+              ? "bg-[#8B00FF] text-white shadow-md shadow-[#8B00FF]/15"
+              : "text-[#8e8e9c] hover:text-white"
+          }`}
+        >
+          📂 Scripts List
+        </button>
+        <button
+          onClick={() => setAdminActiveTab("keysystem")}
+          className={`flex-1 text-center py-2.5 rounded-lg text-xs font-mono font-bold tracking-wider uppercase transition-all relative ${
+            adminActiveTab === "keysystem"
+              ? "bg-[#8B00FF] text-white shadow-md shadow-[#8B00FF]/15"
+              : "text-[#8e8e9c] hover:text-white"
+          }`}
+        >
+          ⚙️ Key Gateway
+          {premiumKeysList.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-[#a855f7] text-white font-mono text-[9px] px-1.5 py-0.2 rounded-full font-bold">
+              {premiumKeysList.length}
             </span>
-            <span className="text-4xl font-extrabold text-white tracking-tight block">
-              {stats !== null ? stats.activeChallenges : "—"}
-            </span>
-          </div>
-          
-          <div className="p-3 bg-[#D000FF]/10 border border-[#D000FF]/25 rounded-xl text-[#e879f9]/90 shrink-0">
-            <Layers className="w-5.5 h-5.5" />
-          </div>
-        </div>
+          )}
+        </button>
       </div>
 
-      {/* Grid: 2 columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {adminActiveTab === "scripts" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* LEFT COLUMN: UPLOADER FORM (7 grid units) */}
         <div className="lg:col-span-7 space-y-6">
           <div className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-6 relative overflow-hidden">
@@ -593,22 +904,46 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
             </h2>
 
             <form onSubmit={handleUploadSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium mb-1 font-mono">
-                  Script Identifier (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={scriptName}
-                  onChange={(e) => setScriptName(e.target.value)}
-                  placeholder="e.g. Universal Aimbot v3.2"
-                  className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] placeholder-[#52525b] text-xs rounded-lg py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium mb-1 font-mono font-mono">
+                    Script Identifier (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={scriptName}
+                    onChange={(e) => setScriptName(e.target.value)}
+                    placeholder="e.g. Universal Aimbot v3.2"
+                    className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] placeholder-[#52525b] text-xs rounded-lg py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium mb-1 font-mono font-mono">
+                    Target Roblox Game
+                  </label>
+                  <input
+                    type="text"
+                    value={targetGame}
+                    onChange={(e) => setTargetGame(e.target.value)}
+                    placeholder="e.g. Phantom Forces"
+                    className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] placeholder-[#52525b] text-xs rounded-lg py-2 px-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium mb-1 font-mono">
-                  Operational Description (Optional)
+                <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium mb-1 font-mono font-mono flex items-center justify-between">
+                  <span>Operational Description (Optional)</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[#a855f7]">
+                    <input
+                      type="checkbox"
+                      checked={requiresKey}
+                      onChange={(e) => setRequiresKey(e.target.checked)}
+                      className="accent-[#8b00ff]"
+                    />
+                    <span className="text-[10px] uppercase font-bold tracking-wider">{requiresKey ? "🔑 Tasks Gate Enforced" : "🔓 Bypass (Keyless)"}</span>
+                  </label>
                 </label>
                 <textarea
                   value={description}
@@ -699,6 +1034,109 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
               </div>
             </div>
           )}
+
+          {/* SECURE KEY GATEWAY CONTROL CENTER */}
+          <div className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-6 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#8B00FF] to-[#D000FF]" />
+
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-white mb-4 flex items-center gap-2">
+              <Key className="w-4 h-4 text-[#8B00FF]" />
+              <span>Gate Key System Configuration</span>
+            </h2>
+
+            <form onSubmit={handleSettingsSubmit} className="space-y-5">
+              {/* Toggle switch */}
+              <div className="flex items-center justify-between p-3.5 bg-[#15131f] border border-[#262438] rounded-xl">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-white block uppercase tracking-wider font-mono">
+                    Enforce Key System Verification
+                  </span>
+                  <span className="text-[10px] text-[#63636b] block font-medium leading-normal">
+                    Requires all execution boots to complete the active Ad Gateway task.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setKeySystemEnabled(!keySystemEnabled)}
+                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    keySystemEnabled ? "bg-[#8b00ff]" : "bg-zinc-850"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      keySystemEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Ad Link target input */}
+              <div className="space-y-1">
+                <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium font-mono">
+                  CUSTOM PUBLISHER AD LINK (LINKVERTISE)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-650">
+                    <Globe className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="url"
+                    value={adLinkUrl}
+                    onChange={(e) => setAdLinkUrl(e.target.value)}
+                    placeholder="e.g. https://linkvertise.com/12345/my-key?url=https://mysolarx.com/key/claim?slug={{slug}}&session={{session}}"
+                    className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] placeholder-[#52525b] text-xs rounded-lg py-2 pl-9 pr-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
+                  />
+                </div>
+                <p className="text-[10px] text-[#52525b] leading-normal font-medium italic mt-1 font-mono">
+                  Include macros <span className="text-[#a855f7] font-semibold">{"{{slug}}"}</span> and <span className="text-[#a855f7] font-semibold">{"{{session}}"}</span> to automatically handle the secure claimant redirection callback. Keep blank to use standard timers!
+                </p>
+              </div>
+
+              {/* Key expiry parameter */}
+              <div className="space-y-1">
+                <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium font-mono">
+                  AUTHORIZED KEY EXPIRATION LEASE (HOURS)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-650">
+                    <Timer className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    max="168"
+                    value={keyExpiryHours}
+                    onChange={(e) => setKeyExpiryHours(Math.max(1, Number(e.target.value)))}
+                    className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] text-xs rounded-lg py-2 pl-9 pr-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
+                  />
+                </div>
+                <p className="text-[10px] text-[#52525b]">
+                  Keys assigned successfully will automatically revoke from active state cache after this duration.
+                </p>
+              </div>
+
+              {settingsSuccess && (
+                <div className="p-3 bg-green-950/20 border border-green-900/30 rounded-lg text-green-400 text-xs font-mono">
+                  {settingsSuccess}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={savingSettings}
+                className="w-full bg-[#14121d] hover:bg-[#1d1a2a] disabled:opacity-50 border border-[#232135] text-[#8B00FF] font-semibold text-xs uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {savingSettings ? (
+                  <span>Saving Cryptographic Directives...</span>
+                ) : (
+                  <>
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Apply Gate Rules</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
         </div>
 
         {/* RIGHT COLUMN: PREVIOUSLY UPLOADED LIST (5 grid units) */}
@@ -746,20 +1184,25 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
                               {script.description}
                             </p>
                           )}
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
                             <span className="bg-[#1f1d2e] text-[#b49ebf] text-[10px] font-mono px-1.5 py-0.5 rounded">
                               {script.slug}
                             </span>
-                            <span className="bg-[#10B981]/10 text-[#34D399] text-[10px] font-mono px-1.5 py-0.5 rounded border border-[#10B981]/20 flex items-center gap-1">
-                              <Play className="w-2.5 h-2.5" />
-                              <span>{script.executions ?? 0} executions</span>
+                            <span className="bg-[#1a142e] text-[#cf9eff] text-[10px] font-mono px-1.5 py-0.5 rounded border border-[#8b00ff]/10">
+                              {(script as any).target_game || "Generic Roblox"}
                             </span>
-                            <span className="text-[10px] text-[#52525b] flex items-center gap-1 font-mono">
-                              <Calendar className="w-3 h-3 text-[#3f3e50]" />
-                              {new Date(script.created_at).toLocaleDateString(undefined, {
-                                month: "short",
-                                day: "numeric",
-                              })}
+                            {(script as any).requires_key === 0 ? (
+                              <span className="bg-emerald-950/20 text-[#34d399] text-[10px] font-mono px-1.5 py-0.5 rounded border border-emerald-500/15">
+                                🔓 Keyless
+                              </span>
+                            ) : (
+                              <span className="bg-purple-950/20 text-[#c084fc] text-[10px] font-mono px-1.5 py-0.5 rounded border border-purple-500/15">
+                                🔑 Key Gateway
+                              </span>
+                            )}
+                            <span className="bg-[#10B981]/10 text-[#34D399] text-[10px] font-mono px-1.5 py-0.5 rounded border border-[#10B981]/10 flex items-center gap-1">
+                              <Play className="w-2.5 h-2.5" />
+                              <span>{(script as any).executions ?? 0} runs</span>
                             </span>
                           </div>
                         </div>
@@ -811,6 +1254,171 @@ function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
           </div>
         </div>
       </div>
+      ) : (
+        /* TAB 2: KEY SYSTEM & PREMIUM MANAGEMENT */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* LEFT COLUMN: SETTINGS */}
+          <div className="lg:col-span-6 space-y-6">
+            <div className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#8B00FF] to-[#D000FF]" />
+
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-white mb-4 flex items-center gap-2">
+                <Key className="w-4 h-4 text-[#8B00FF]" />
+                <span>Gate Key System Configuration</span>
+              </h2>
+
+              <form onSubmit={handleSettingsSubmit} className="space-y-5">
+                <div className="flex items-center justify-between p-3.5 bg-[#15131f] border border-[#262438] rounded-xl">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold text-white block uppercase tracking-wider font-mono">
+                      Enforce Key System Verification
+                    </span>
+                    <span className="text-[10px] text-[#63636b] block font-medium leading-normal">
+                      Requires all execution boots to complete the active Ad Gateway task.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKeySystemEnabled(!keySystemEnabled)}
+                    className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      keySystemEnabled ? "bg-[#8b00ff]" : "bg-zinc-800"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        keySystemEnabled ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium font-mono">
+                    CUSTOM PUBLISHER AD LINK (LINKVERTISE)
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-650">
+                      <Globe className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type="url"
+                      value={adLinkUrl}
+                      onChange={(e) => setAdLinkUrl(e.target.value)}
+                      placeholder="e.g. https://linkvertise.com/12300/example"
+                      className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] placeholder-[#52525b] text-xs rounded-lg py-2 pl-9 pr-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
+                    />
+                  </div>
+                  <p className="text-[10.5px] text-[#52525b] leading-normal font-medium italic mt-1 font-mono">
+                    Include macros <span className="text-[#a855f7] font-semibold">{"{{slug}}"}</span> and <span className="text-[#a855f7] font-semibold">{"{{session}}"}</span> to automatically track callbacks securely.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs uppercase tracking-wider text-[#a1a1aa] font-medium font-mono">
+                    AUTHORIZED KEY EXPIRATION LEASE (HOURS)
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-655 font-mono">
+                      <Timer className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      value={keyExpiryHours}
+                      onChange={(e) => setKeyExpiryHours(Math.max(1, Number(e.target.value)))}
+                      className="w-full bg-[#15141d] border border-[#262438] text-[#eeeeee] text-xs rounded-lg py-2 pl-9 pr-3 focus:outline-none focus:ring-1 focus:ring-[#8B00FF] focus:border-[#8B00FF] transition-all"
+                    />
+                  </div>
+                  <p className="text-[10px] text-[#52525b]">
+                    Keys assigned successfully will automatically expire from cache after this session length.
+                  </p>
+                </div>
+
+                {settingsSuccess && (
+                  <div className="p-3 bg-green-950/20 border border-green-905/30 rounded-lg text-green-400 text-xs font-mono">
+                    {settingsSuccess}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="w-full bg-[#14121d] hover:bg-[#1d1a2a] disabled:opacity-50 border border-[#232135] text-[#8B00FF] font-semibold text-xs uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {savingSettings ? (
+                    <span>Saving Cryptographic Directives...</span>
+                  ) : (
+                    <>
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>Apply Gate Rules</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: PREMIUM KEY BYPASS LIST */}
+          <div className="lg:col-span-6 space-y-6">
+            <div className="bg-[#0f0e15] border border-[#211f30] rounded-xl p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 to-indigo-500" />
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-white mb-4 flex items-center gap-2">
+                <Key className="w-4 h-4 text-[#8B00FF]" />
+                <span>Premium Direct Bypass License Keys</span>
+              </h2>
+              <p className="text-xs text-[#a1a1aa] mb-4 leading-relaxed">
+                Generate elite premium authorization tokens. Handing these license tokens to users allows them to verify instantly on the checkpoint landing page—completely bypassing any ad link tasks.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleGeneratePremiumKey}
+                disabled={generatingPremium}
+                className="w-full bg-gradient-to-r from-[#8B00FF] to-[#cf59ff] text-white font-mono font-bold text-xs uppercase tracking-wider py-3 px-4 rounded-lg transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mb-5"
+              >
+                {generatingPremium ? (
+                  <span>ENGINEERING DIGITAL LICENSE...</span>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Generate New Premium Bypass Key</span>
+                  </>
+                )}
+              </button>
+
+              {premiumCreateSuccess && (
+                <div className="p-1 px-3.5 bg-green-950/25 border border-green-500/35 rounded-lg text-emerald-400 text-xs font-mono mb-4 select-all">
+                  {premiumCreateSuccess}
+                </div>
+              )}
+
+              <h3 className="text-xs uppercase tracking-wider text-white/80 mb-2 font-mono">Active Premium Keys ({premiumKeysList.length})</h3>
+              {premiumKeysList.length === 0 ? (
+                <div className="py-8 border border-dashed border-[#1f1d2d] rounded-xl text-center text-[#52525b] text-xs font-mono p-4">
+                  No custom premium gate bypasses registered.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {premiumKeysList.map((key) => (
+                    <div key={key} className="flex items-center justify-between p-3 bg-[#13121b] border border-[#212032] hover:border-zinc-700 rounded-lg group">
+                      <span className="font-mono text-xs text-amber-300 select-all">{key}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRevokePremiumKey(key)}
+                        className="text-[#9ea3b2] hover:text-red-400 p-1 rounded-md transition-colors"
+                        title="Revoke License Access"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
